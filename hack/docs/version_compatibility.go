@@ -19,8 +19,13 @@ import (
 	"log"
 	"os"
 	"strings"
+)
 
-	"github.com/aws/karpenter-provider-aws/pkg/providers/version"
+// Kubernetes version compatibility for documentation purposes
+const (
+	// Update these values when Kubernetes support changes
+	MinK8sVersion = "1.23"
+	MaxK8sVersion = "1.29"
 )
 
 func main() {
@@ -39,8 +44,8 @@ func main() {
     minK8sVersion: %s
     maxK8sVersion: %s`,
 		v,
-		version.MinK8sVersion,
-		version.MaxK8sVersion)
+		MinK8sVersion,
+		MaxK8sVersion)
 
 	yamlFile, err := os.ReadFile(os.Args[1])
 	if err != nil {
