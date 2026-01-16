@@ -48,17 +48,21 @@ jobs:
           else
             VERSION="$(git rev-parse --short HEAD)"
           fi
+          # Get Unix timestamp from git for reproducible builds
+          DATE_EPOCH="$(git log -1 --format='%ct')"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "date_epoch=${DATE_EPOCH}" >> $GITHUB_OUTPUT
           echo "Building version: ${VERSION}"
 
       - name: Build and push image with ko
         env:
           KO_DOCKER_REPO: ${{ secrets.JFROG_REGISTRY }}/${{ secrets.JFROG_REPO }}
           VERSION: ${{ steps.version.outputs.version }}
-          SOURCE_DATE_EPOCH: ${{ github.event.repository.updated_at }}
-          KO_DATA_DATE_EPOCH: ${{ github.event.repository.updated_at }}
+          SOURCE_DATE_EPOCH: ${{ steps.version.outputs.date_epoch }}
+          KO_DATA_DATE_EPOCH: ${{ steps.version.outputs.date_epoch }}
+          GOFLAGS: -ldflags=-X=sigs.k8s.io/karpenter/pkg/operator.Version=${{ steps.version.outputs.version }}
         run: |
-          GOFLAGS="${LDFLAGS}" ko publish -B -t "${VERSION}" ./cmd/controller
+          ko publish -B -t "${VERSION}" ./cmd/controller
 
       - name: Build and push Helm charts
         env:
