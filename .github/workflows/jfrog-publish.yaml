@@ -43,11 +43,21 @@ jobs:
       - name: Determine version
         id: version
         run: |
+          VERSION=""
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             VERSION="${GITHUB_REF#refs/tags/}"
+          elif [[ -n "${{ github.ref }}" ]]; then
+            VERSION="$(git rev-parse --short HEAD)"
           else
             VERSION="$(git rev-parse --short HEAD)"
           fi
+          
+          # Validate version is set
+          if [[ -z "${VERSION}" ]]; then
+            echo "Error: Could not determine version"
+            exit 1
+          fi
+          
           # Get Unix timestamp from git for reproducible builds
           DATE_EPOCH="$(git log -1 --format='%ct')"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
@@ -60,9 +70,9 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           SOURCE_DATE_EPOCH: ${{ steps.version.outputs.date_epoch }}
           KO_DATA_DATE_EPOCH: ${{ steps.version.outputs.date_epoch }}
-          GOFLAGS: -ldflags=-X=sigs.k8s.io/karpenter/pkg/operator.Version=${{ steps.version.outputs.version }}
+          GOFLAGS: '-ldflags=-X=sigs.k8s.io/karpenter/pkg/operator.Version=${{ steps.version.outputs.version }}'
         run: |
-          ko publish -B -t "${VERSION}" ./cmd/controller
+          ko publish -B --platform=linux/amd64,linux/arm64 -t "${VERSION}" ./cmd/controller
 
       - name: Summary
         run: |
