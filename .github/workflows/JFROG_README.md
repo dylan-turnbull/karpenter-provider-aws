@@ -1,12 +1,10 @@
 # JFrog Publishing Workflow
 
-This document describes the GitHub Actions workflow for building and publishing Karpenter container images and Helm charts to JFrog Artifactory.
+This document describes the GitHub Actions workflow for building and publishing Karpenter container images to JFrog Artifactory.
 
 ## Overview
 
-The `jfrog-publish.yaml` workflow automatically builds and publishes:
-- Container images for the Karpenter controller
-- Helm charts (karpenter and karpenter-crd)
+The `jfrog-publish.yaml` workflow automatically builds and publishes the container image for the Karpenter controller.
 
 ## Triggers
 
@@ -24,7 +22,6 @@ The following GitHub secrets must be configured in your repository:
 |------------|-------------|---------|
 | `JFROG_REGISTRY` | JFrog Artifactory registry URL | `mycompany.jfrog.io` |
 | `JFROG_REPO` | Docker repository name in JFrog | `karpenter-docker` |
-| `JFROG_HELM_REPO` | Helm chart repository path in JFrog | `helm-local` |
 | `JFROG_USERNAME` | JFrog username for authentication | `github-actions` |
 | `JFROG_PASSWORD` | JFrog password or API token | `<your-api-token>` |
 
@@ -41,8 +38,7 @@ The following GitHub secrets must be configured in your repository:
 
 1. **JFrog Artifactory Instance**: You need access to a JFrog Artifactory instance
 2. **Docker Repository**: Create a Docker repository in JFrog (e.g., `karpenter-docker`)
-3. **Helm Repository**: Create a Helm repository in JFrog (e.g., `helm-local`)
-4. **Service Account**: Create a service account with permissions to push images and charts
+3. **Service Account**: Create a service account with permissions to push images
 
 ### Creating a Service Account
 
@@ -53,7 +49,6 @@ The following GitHub secrets must be configured in your repository:
 5. Set a password or generate an API token
 6. Assign appropriate permissions:
    - Deploy/Cache permissions for Docker repository
-   - Deploy/Cache permissions for Helm repository
 
 ### Repository Configuration
 
@@ -61,11 +56,6 @@ The following GitHub secrets must be configured in your repository:
 - Type: Docker
 - Repository Key: `karpenter-docker` (or your chosen name)
 - Package Type: Docker
-
-#### Helm Repository
-- Type: Generic or Helm
-- Repository Key: `helm-local` (or your chosen name)
-- Package Type: Helm
 
 ## Workflow Steps
 
@@ -75,8 +65,7 @@ The following GitHub secrets must be configured in your repository:
 4. **Login to JFrog**: Authenticates with JFrog Artifactory
 5. **Determine Version**: Extracts version from git tag or commit SHA
 6. **Build and Push Image**: Uses `ko` to build and push the controller image
-7. **Build and Push Helm Charts**: Packages and uploads Helm charts
-8. **Summary**: Displays build results in workflow summary
+7. **Summary**: Displays build results in workflow summary
 
 ## Version Tagging
 
@@ -88,12 +77,6 @@ The following GitHub secrets must be configured in your repository:
 Images are pushed to: `<JFROG_REGISTRY>/<JFROG_REPO>/controller:<version>`
 
 Example: `mycompany.jfrog.io/karpenter-docker/controller:v0.1.0`
-
-## Helm Chart Naming
-
-Helm charts are uploaded to: `<JFROG_REGISTRY>/<JFROG_HELM_REPO>/karpenter-<version>.tgz`
-
-Example: `mycompany.jfrog.io/helm-local/karpenter-0.1.0.tgz`
 
 ## Testing the Workflow
 
@@ -118,13 +101,6 @@ If image push fails:
 - Verify `JFROG_REGISTRY` and `JFROG_REPO` are correct
 - Ensure the Docker repository exists in JFrog
 - Check repository permissions
-
-### Helm Push Failures
-
-If Helm chart push fails:
-- Verify `JFROG_HELM_REPO` path is correct
-- Ensure the Helm repository exists in JFrog
-- Check that the service account has deploy permissions
 
 ## Security Considerations
 

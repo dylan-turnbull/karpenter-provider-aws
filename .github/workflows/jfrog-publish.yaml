@@ -64,35 +64,9 @@ jobs:
         run: |
           ko publish -B -t "${VERSION}" ./cmd/controller
 
-      - name: Build and push Helm charts
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          # Update chart versions
-          yq e -i ".appVersion = \"${VERSION}\"" charts/karpenter/Chart.yaml
-          yq e -i ".version = \"${VERSION}\"" charts/karpenter/Chart.yaml
-          yq e -i ".appVersion = \"${VERSION}\"" charts/karpenter-crd/Chart.yaml
-          yq e -i ".version = \"${VERSION}\"" charts/karpenter-crd/Chart.yaml
-          
-          # Package and push karpenter chart
-          cd charts
-          helm dependency update karpenter
-          helm package karpenter --version "${VERSION}"
-          curl -u "${{ secrets.JFROG_USERNAME }}:${{ secrets.JFROG_PASSWORD }}" \
-            -T "karpenter-${VERSION}.tgz" \
-            "${{ secrets.JFROG_REGISTRY }}/${{ secrets.JFROG_HELM_REPO }}/karpenter-${VERSION}.tgz"
-          
-          # Package and push karpenter-crd chart
-          helm package karpenter-crd --version "${VERSION}"
-          curl -u "${{ secrets.JFROG_USERNAME }}:${{ secrets.JFROG_PASSWORD }}" \
-            -T "karpenter-crd-${VERSION}.tgz" \
-            "${{ secrets.JFROG_REGISTRY }}/${{ secrets.JFROG_HELM_REPO }}/karpenter-crd-${VERSION}.tgz"
-          cd ..
-
       - name: Summary
         run: |
           echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Image**: ${{ secrets.JFROG_REGISTRY }}/${{ secrets.JFROG_REPO }}/controller:${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Helm Charts**: Published to ${{ secrets.JFROG_HELM_REPO }}" >> $GITHUB_STEP_SUMMARY
