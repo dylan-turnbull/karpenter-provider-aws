@@ -15,7 +15,10 @@ limitations under the License.
 package main
 
 import (
+	"os"
+
 	"github.com/samber/lo"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 
 	"github.com/aws/karpenter-provider-aws/pkg/cloudprovider"
 	"github.com/aws/karpenter-provider-aws/pkg/controllers"
@@ -30,6 +33,12 @@ import (
 )
 
 func main() {
+	tracer.Start(
+		tracer.WithService("karpenter-aws"),
+		tracer.WithEnv(os.Getenv("CLUSTER_NAME")),
+	)
+	defer tracer.Stop()
+
 	ctx, op := operator.NewOperator(coreoperator.NewOperator())
 	awsCloudProvider := cloudprovider.New(
 		op.InstanceTypesProvider,
