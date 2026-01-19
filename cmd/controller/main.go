@@ -33,9 +33,13 @@ import (
 )
 
 func main() {
+	env := os.Getenv("CLUSTER_NAME")
+	if env == "" {
+		env = "unknown"
+	}
 	tracer.Start(
 		tracer.WithService("karpenter-aws"),
-		tracer.WithEnv(os.Getenv("CLUSTER_NAME")),
+		tracer.WithEnv(env),
 	)
 	defer tracer.Stop()
 
