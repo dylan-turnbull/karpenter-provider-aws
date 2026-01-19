@@ -17,10 +17,12 @@ package garbagecollection
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/samber/lo"
 	"go.uber.org/multierr"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/workqueue"
@@ -53,6 +55,9 @@ func (c *Controller) Name() string {
 }
 
 func (c *Controller) Reconcile(ctx context.Context, _ reconcile.Request) (reconcile.Result, error) {
+	span, ctx := tracer.StartSpanFromContext(ctx, "nodeclaim.garbagecollection.reconcile")
+	defer span.Finish()
+
 	// We LIST machines on the CloudProvider BEFORE we grab Machines/Nodes on the cluster so that we make sure that, if
 	// LISTing instances takes a long time, our information is more updated by the time we get to Machine and Node LIST
 	// This works since our CloudProvider instances are deleted based on whether the Machine exists or not, not vise-versa
@@ -75,12 +80,17 @@ func (c *Controller) Reconcile(ctx context.Context, _ reconcile.Request) (reconc
 		return n.Status.ProviderID, n.Status.ProviderID != ""
 	})...)
 	errs := make([]error, len(retrieved))
+	var collected int32
 	workqueue.ParallelizeUntil(ctx, 100, len(managedRetrieved), func(i int) {
 		if !resolvedProviderIDs.Has(managedRetrieved[i].Status.ProviderID) &&
 			time.Since(managedRetrieved[i].CreationTimestamp.Time) > time.Second*30 {
 			errs[i] = c.garbageCollect(ctx, managedRetrieved[i], nodeList)
+			if errs[i] == nil {
+				atomic.AddInt32(&collected, 1)
+			}
 		}
 	})
+	span.SetTag("gc.collected", collected)
 	if err = multierr.Combine(errs...); err != nil {
 		return reconcile.Result{}, err
 	}

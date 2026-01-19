@@ -28,6 +28,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 	"github.com/samber/lo"
 	"go.uber.org/multierr"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"knative.dev/pkg/logging"
@@ -90,6 +91,13 @@ func NewDefaultProvider(ctx context.Context, region string, ec2api ec2iface.EC2A
 }
 
 func (p *DefaultProvider) Create(ctx context.Context, nodeClass *v1beta1.EC2NodeClass, nodeClaim *corev1beta1.NodeClaim, instanceTypes []*cloudprovider.InstanceType) (*Instance, error) {
+	span, ctx := tracer.StartSpanFromContext(ctx, "instance.create",
+		tracer.ResourceName(nodeClaim.Name),
+		tracer.Tag("nodeclaim.namespace", nodeClaim.Namespace),
+		tracer.Tag("instance_types.count", len(instanceTypes)),
+	)
+	defer span.Finish()
+
 	schedulingRequirements := scheduling.NewNodeSelectorRequirementsWithMinValues(nodeClaim.Spec.Requirements...)
 	// Only filter the instances if there are no minValues in the requirement.
 	if !schedulingRequirements.HasMinValues() {
@@ -106,10 +114,18 @@ func (p *DefaultProvider) Create(ctx context.Context, nodeClass *v1beta1.EC2Node
 		return nil, err
 	}
 	efaEnabled := lo.Contains(lo.Keys(nodeClaim.Spec.Resources.Requests), v1beta1.ResourceEFA)
-	return NewInstanceFromFleet(fleetInstance, tags, efaEnabled), nil
+	instance := NewInstanceFromFleet(fleetInstance, tags, efaEnabled)
+	span.SetTag("instance.id", instance.ID)
+	span.SetTag("instance.type", instance.Type)
+	return instance, nil
 }
 
 func (p *DefaultProvider) Get(ctx context.Context, id string) (*Instance, error) {
+	span, ctx := tracer.StartSpanFromContext(ctx, "instance.get",
+		tracer.ResourceName(id),
+	)
+	defer span.Finish()
+
 	out, err := p.ec2Batcher.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
 		InstanceIds: aws.StringSlice([]string{id}),
 		Filters:     []*ec2.Filter{instanceStateFilter},
@@ -131,6 +147,9 @@ func (p *DefaultProvider) Get(ctx context.Context, id string) (*Instance, error)
 }
 
 func (p *DefaultProvider) List(ctx context.Context) ([]*Instance, error) {
+	span, ctx := tracer.StartSpanFromContext(ctx, "instance.list")
+	defer span.Finish()
+
 	var out = &ec2.DescribeInstancesOutput{}
 	err := p.ec2api.DescribeInstancesPagesWithContext(ctx, &ec2.DescribeInstancesInput{
 		Filters: []*ec2.Filter{
@@ -156,10 +175,16 @@ func (p *DefaultProvider) List(ctx context.Context) ([]*Instance, error) {
 		return nil, fmt.Errorf("describing ec2 instances, %w", err)
 	}
 	instances, err := instancesFromOutput(out)
+	span.SetTag("instance.count", len(instances))
 	return instances, cloudprovider.IgnoreNodeClaimNotFoundError(err)
 }
 
 func (p *DefaultProvider) Delete(ctx context.Context, id string) error {
+	span, ctx := tracer.StartSpanFromContext(ctx, "instance.delete",
+		tracer.ResourceName(id),
+	)
+	defer span.Finish()
+
 	if _, err := p.ec2Batcher.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
 		InstanceIds: []*string{aws.String(id)},
 	}); err != nil {
@@ -194,7 +219,15 @@ func (p *DefaultProvider) CreateTags(ctx context.Context, id string, tags map[st
 }
 
 func (p *DefaultProvider) launchInstance(ctx context.Context, nodeClass *v1beta1.EC2NodeClass, nodeClaim *corev1beta1.NodeClaim, instanceTypes []*cloudprovider.InstanceType, tags map[string]string) (*ec2.CreateFleetInstance, error) {
+	span, ctx := tracer.StartSpanFromContext(ctx, "instance.launch",
+		tracer.ResourceName(nodeClaim.Name),
+		tracer.Tag("instance_types.count", len(instanceTypes)),
+	)
+	defer span.Finish()
+
 	capacityType := p.getCapacityType(nodeClaim, instanceTypes)
+	span.SetTag("capacity.type", capacityType)
+
 	zonalSubnets, err := p.subnetProvider.ZonalSubnetsForLaunch(ctx, nodeClass, instanceTypes, capacityType)
 	if err != nil {
 		return nil, fmt.Errorf("getting subnets, %w", err)

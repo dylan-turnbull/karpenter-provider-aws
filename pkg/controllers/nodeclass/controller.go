@@ -20,6 +20,7 @@ import (
 	"sort"
 	"time"
 
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/aws/karpenter-provider-aws/pkg/providers/launchtemplate"
@@ -82,6 +83,11 @@ func NewController(kubeClient client.Client, recorder events.Recorder, subnetPro
 }
 
 func (c *Controller) Reconcile(ctx context.Context, nodeClass *v1beta1.EC2NodeClass) (reconcile.Result, error) {
+	span, ctx := tracer.StartSpanFromContext(ctx, "nodeclass.reconcile",
+		tracer.ResourceName(nodeClass.Name),
+	)
+	defer span.Finish()
+
 	stored := nodeClass.DeepCopy()
 	controllerutil.AddFinalizer(nodeClass, v1beta1.TerminationFinalizer)
 

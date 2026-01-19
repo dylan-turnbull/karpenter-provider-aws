@@ -38,6 +38,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ssm"
 	"github.com/patrickmn/go-cache"
 	"github.com/samber/lo"
+	awstrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/aws/aws-sdk-go/aws"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -104,6 +105,9 @@ func NewOperator(ctx context.Context, operator *operator.Operator) (context.Cont
 			awsclient.DefaultRetryer{NumMaxRetries: awsclient.DefaultRetryerMaxNumRetries},
 		),
 	)))
+
+	// Instrument AWS SDK calls with DataDog tracing
+	awstrace.WrapSession(sess)
 
 	if *sess.Config.Region == "" {
 		logging.FromContext(ctx).Debug("retrieving region from IMDS")

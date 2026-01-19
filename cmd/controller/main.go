@@ -15,7 +15,13 @@ limitations under the License.
 package main
 
 import (
+	"os"
+	"strings"
+	"time"
+
 	"github.com/samber/lo"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
+	"k8s.io/klog/v2"
 
 	"github.com/aws/karpenter-provider-aws/pkg/cloudprovider"
 	"github.com/aws/karpenter-provider-aws/pkg/controllers"
@@ -29,7 +35,44 @@ import (
 	corewebhooks "sigs.k8s.io/karpenter/pkg/webhooks"
 )
 
+func getSocketPath() string {
+	agentURL := os.Getenv("DD_TRACE_AGENT_URL")
+	if strings.HasPrefix(agentURL, "unix://") {
+		return strings.TrimPrefix(agentURL, "unix://")
+	}
+	return ""
+}
+
+func waitForDDSocket(socketPath string, maxWait time.Duration) bool {
+	if socketPath == "" {
+		return true
+	}
+
+	deadline := time.Now().Add(maxWait)
+	klog.Infof("Waiting for Datadog APM socket at %s", socketPath)
+
+	for time.Now().Before(deadline) {
+		if info, err := os.Stat(socketPath); err == nil && (info.Mode()&os.ModeSocket) != 0 {
+			klog.Infof("Datadog APM socket is ready")
+			return true
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	klog.Warningf("Datadog APM socket not available after %v, starting without tracing", maxWait)
+	return false
+}
+
 func main() {
+	socketPath := getSocketPath()
+
+	if os.Getenv("DD_TRACE_ENABLED") == "true" && waitForDDSocket(socketPath, 60*time.Second) {
+		tracer.Start(
+			tracer.WithService("karpenter"),
+		)
+		defer tracer.Stop()
+	}
+
 	ctx, op := operator.NewOperator(coreoperator.NewOperator())
 	awsCloudProvider := cloudprovider.New(
 		op.InstanceTypesProvider,
