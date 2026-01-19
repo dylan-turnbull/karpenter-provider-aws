@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -79,6 +80,12 @@ func New(instanceTypeProvider instancetype.Provider, instanceProvider instance.P
 
 // Create a NodeClaim given the constraints.
 func (c *CloudProvider) Create(ctx context.Context, nodeClaim *corev1beta1.NodeClaim) (*corev1beta1.NodeClaim, error) {
+	span, ctx := tracer.StartSpanFromContext(ctx, "cloudprovider.create",
+		tracer.ResourceName(nodeClaim.Name),
+		tracer.Tag("nodeclaim.namespace", nodeClaim.Namespace),
+	)
+	defer span.Finish()
+
 	nodeClass, err := c.resolveNodeClassFromNodeClaim(ctx, nodeClaim)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -110,6 +117,9 @@ func (c *CloudProvider) Create(ctx context.Context, nodeClaim *corev1beta1.NodeC
 }
 
 func (c *CloudProvider) List(ctx context.Context) ([]*corev1beta1.NodeClaim, error) {
+	span, ctx := tracer.StartSpanFromContext(ctx, "cloudprovider.list")
+	defer span.Finish()
+
 	instances, err := c.instanceProvider.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("listing instances, %w", err)
@@ -122,10 +132,16 @@ func (c *CloudProvider) List(ctx context.Context) ([]*corev1beta1.NodeClaim, err
 		}
 		nodeClaims = append(nodeClaims, c.instanceToNodeClaim(instance, instanceType))
 	}
+	span.SetTag("instance.count", len(nodeClaims))
 	return nodeClaims, nil
 }
 
 func (c *CloudProvider) Get(ctx context.Context, providerID string) (*corev1beta1.NodeClaim, error) {
+	span, ctx := tracer.StartSpanFromContext(ctx, "cloudprovider.get",
+		tracer.ResourceName(providerID),
+	)
+	defer span.Finish()
+
 	id, err := utils.ParseInstanceID(providerID)
 	if err != nil {
 		return nil, fmt.Errorf("getting instance ID, %w", err)
@@ -170,6 +186,12 @@ func (c *CloudProvider) GetInstanceTypes(ctx context.Context, nodePool *corev1be
 }
 
 func (c *CloudProvider) Delete(ctx context.Context, nodeClaim *corev1beta1.NodeClaim) error {
+	span, ctx := tracer.StartSpanFromContext(ctx, "cloudprovider.delete",
+		tracer.ResourceName(nodeClaim.Name),
+		tracer.Tag("nodeclaim.namespace", nodeClaim.Namespace),
+	)
+	defer span.Finish()
+
 	ctx = logging.WithLogger(ctx, logging.FromContext(ctx).With("nodeclaim", nodeClaim.Name))
 
 	id, err := utils.ParseInstanceID(nodeClaim.Status.ProviderID)
@@ -181,6 +203,12 @@ func (c *CloudProvider) Delete(ctx context.Context, nodeClaim *corev1beta1.NodeC
 }
 
 func (c *CloudProvider) IsDrifted(ctx context.Context, nodeClaim *corev1beta1.NodeClaim) (cloudprovider.DriftReason, error) {
+	span, ctx := tracer.StartSpanFromContext(ctx, "cloudprovider.is_drifted",
+		tracer.ResourceName(nodeClaim.Name),
+		tracer.Tag("nodeclaim.namespace", nodeClaim.Namespace),
+	)
+	defer span.Finish()
+
 	// Not needed when GetInstanceTypes removes nodepool dependency
 	nodePoolName, ok := nodeClaim.Labels[corev1beta1.NodePoolLabelKey]
 	if !ok {
@@ -203,6 +231,10 @@ func (c *CloudProvider) IsDrifted(ctx context.Context, nodeClaim *corev1beta1.No
 	driftReason, err := c.isNodeClassDrifted(ctx, nodeClaim, nodePool, nodeClass)
 	if err != nil {
 		return "", err
+	}
+	if driftReason != "" {
+		span.SetTag("drift.detected", true)
+		span.SetTag("drift.reason", string(driftReason))
 	}
 	return driftReason, nil
 }
