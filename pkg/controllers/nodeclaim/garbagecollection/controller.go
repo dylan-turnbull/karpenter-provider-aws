@@ -17,6 +17,7 @@ package garbagecollection
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/samber/lo"
@@ -79,13 +80,13 @@ func (c *Controller) Reconcile(ctx context.Context, _ reconcile.Request) (reconc
 		return n.Status.ProviderID, n.Status.ProviderID != ""
 	})...)
 	errs := make([]error, len(retrieved))
-	collected := 0
+	var collected int32
 	workqueue.ParallelizeUntil(ctx, 100, len(managedRetrieved), func(i int) {
 		if !resolvedProviderIDs.Has(managedRetrieved[i].Status.ProviderID) &&
 			time.Since(managedRetrieved[i].CreationTimestamp.Time) > time.Second*30 {
 			errs[i] = c.garbageCollect(ctx, managedRetrieved[i], nodeList)
 			if errs[i] == nil {
-				collected++
+				atomic.AddInt32(&collected, 1)
 			}
 		}
 	})
