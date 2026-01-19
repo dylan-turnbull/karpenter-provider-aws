@@ -14,3 +14,5 @@ go.work.sum
 
 # Project Specific
 *.csv
+BUILD_ARTIFACTS
+version_compatibility_gen
