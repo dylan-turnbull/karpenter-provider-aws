@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"time"
 
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"knative.dev/pkg/logging"
 	controllerruntime "sigs.k8s.io/controller-runtime"
@@ -55,6 +56,11 @@ func (c *Controller) Name() string {
 }
 
 func (c *Controller) Reconcile(ctx context.Context, nodeClaim *corev1beta1.NodeClaim) (reconcile.Result, error) {
+	span, ctx := tracer.StartSpanFromContext(ctx, "nodeclaim.tagging.reconcile",
+		tracer.ResourceName(nodeClaim.Name),
+	)
+	defer span.Finish()
+
 	stored := nodeClaim.DeepCopy()
 	if !isTaggable(nodeClaim) {
 		return reconcile.Result{}, nil
